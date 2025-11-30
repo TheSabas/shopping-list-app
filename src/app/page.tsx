@@ -96,6 +96,7 @@ export default function Home() {
     if (activeList?.id) {
       setLists(lists.filter(l => l.id !== activeList.id));
     }
+    loadHistory();
   };
 
   const handleReuseList = async (historyId: number) => {
