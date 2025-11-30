@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shopping-list-db
+    environment:
+      POSTGRES_DB: shopping_list
+      POSTGRES_USER: shopping_user
+      POSTGRES_PASSWORD: shopping_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - shopping-network
+
+  backend:
+    build: ./backend
+    container_name: shopping-list-backend
+    environment:
+      DATABASE_URL: postgres://shopping_user:shopping_password@postgres:5432/shopping_list?sslmode=disable
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - shopping-network
+
+volumes:
+  postgres_data:
+
+networks:
+  shopping-network:
+    driver: bridge
