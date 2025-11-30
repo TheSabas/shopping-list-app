@@ -393,30 +393,48 @@ func ReuseList(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		var req struct {
-			Name string `json:"name"`
+		// Get the history entry
+		var historyData string
+		err := db.QueryRow(
+			"SELECT data FROM list_history WHERE id = $1 AND user_id = $2",
+			id, userID,
+		).Scan(&historyData)
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "History entry not found"})
+			return
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve history"})
 			return
 		}
 
-		// Get original list items
-		rows, err := db.Query(
-			"SELECT name, quantity, unit FROM shopping_items WHERE list_id = $1",
-			id,
-		)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve original list"})
+		// Parse history data
+		var data map[string]interface{}
+		if err := json.Unmarshal([]byte(historyData), &data); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse history data"})
 			return
 		}
-		defer rows.Close()
+
+		listName, ok := data["name"].(string)
+		if !ok {
+			listName = "Reused List"
+		}
+
+		// Get items from history data
+		var items []map[string]interface{}
+		if itemsData, ok := data["items"].([]interface{}); ok {
+			for _, item := range itemsData {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					items = append(items, itemMap)
+				}
+			}
+		}
 
 		// Create new list
 		var newListID int
 		err = db.QueryRow(
 			"INSERT INTO shopping_lists (user_id, name) VALUES ($1, $2) RETURNING id",
-			userID, req.Name,
+			userID, listName,
 		).Scan(&newListID)
 
 		if err != nil {
@@ -425,14 +443,10 @@ func ReuseList(db *sql.DB) gin.HandlerFunc {
 		}
 
 		// Copy items
-		for rows.Next() {
-			var name string
-			var quantity float64
-			var unit string
-			if err := rows.Scan(&name, &quantity, &unit); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan item"})
-				return
-			}
+		for _, item := range items {
+			name, _ := item["name"].(string)
+			quantity, _ := item["quantity"].(float64)
+			unit, _ := item["unit"].(string)
 
 			_, err := db.Exec(
 				"INSERT INTO shopping_items (list_id, name, quantity, unit) VALUES ($1, $2, $3, $4)",
@@ -445,13 +459,13 @@ func ReuseList(db *sql.DB) gin.HandlerFunc {
 		}
 
 		// Record in history
-		data, _ := json.Marshal(map[string]interface{}{
-			"original_list_id": id,
-			"new_list_id":      newListID,
+		historyEntry, _ := json.Marshal(map[string]interface{}{
+			"original_history_id": id,
+			"new_list_id":         newListID,
 		})
 		_, err = db.Exec(
 			"INSERT INTO list_history (user_id, original_list_id, action, data) VALUES ($1, $2, $3, $4)",
-			userID, id, "reused", string(data),
+			userID, newListID, "reused", string(historyEntry),
 		)
 
 		if err != nil {
