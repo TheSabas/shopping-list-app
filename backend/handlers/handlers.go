@@ -73,6 +73,29 @@ func GetUserLists(db *sql.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan list"})
 				return
 			}
+
+			// Get items for this list
+			itemRows, err := db.Query(
+				"SELECT id, list_id, name, quantity, unit, purchased, created_at FROM shopping_items WHERE list_id = $1",
+				list.ID,
+			)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve items"})
+				return
+			}
+			defer itemRows.Close()
+
+			items := []models.ShoppingItem{}
+			for itemRows.Next() {
+				var item models.ShoppingItem
+				if err := itemRows.Scan(&item.ID, &item.ListID, &item.Name, &item.Quantity, &item.Unit, &item.Purchased, &item.CreatedAt); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan item"})
+					return
+				}
+				items = append(items, item)
+			}
+
+			list.Items = items
 			lists = append(lists, list)
 		}
 
