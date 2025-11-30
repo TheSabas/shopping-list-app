@@ -4,7 +4,7 @@ import { ShoppingList as ShoppingListType } from '@/types';
 import { useState } from 'react';
 import { ArrowLeft, Save, Trash2 } from 'lucide-react';
 import { ItemForm, ItemList } from './ItemForm';
-import { createItem, deleteItem, updateItem, deleteList } from '@/lib/api';
+import { createItem, deleteItem, updateItem, deleteList, markListDone } from '@/lib/api';
 
 interface ActiveListProps {
   list: ShoppingListType;
@@ -70,11 +70,12 @@ export function ActiveList({
   const handleMarkDone = async () => {
     if (!list.id) return;
     setIsLoading(true);
+    setError('');
     try {
-      const updatedList = { ...list, items };
-      onListUpdated(updatedList);
+      await markListDone(list.id);
       setSuccess('Shopping list marked as done!');
       setTimeout(() => {
+        onListDeleted(); // Use onListDeleted since the list is removed from active lists
         onBack();
       }, 1500);
     } catch (err) {

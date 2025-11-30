@@ -23,6 +23,7 @@ func SetupRoutes(router *gin.Engine, db *sql.DB) {
 			lists.GET("/:id", handlers.GetList(db))
 			lists.PUT("/:id", handlers.UpdateList(db))
 			lists.DELETE("/:id", handlers.DeleteList(db))
+			lists.POST("/:id/done", handlers.MarkListDone(db))
 		}
 
 		// Shopping Items routes

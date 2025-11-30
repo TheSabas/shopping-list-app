@@ -40,6 +40,16 @@ export async function deleteList(id: number): Promise<void> {
   if (!response.ok) throw new Error('Failed to delete list');
 }
 
+export async function markListDone(id: number): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/lists/${id}/done`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: USER_ID }),
+  });
+  if (!response.ok) throw new Error('Failed to mark list as done');
+  return response.json();
+}
+
 export async function createItem(
   listId: number,
   name: string,

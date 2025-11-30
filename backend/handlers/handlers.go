@@ -165,6 +165,93 @@ func DeleteList(db *sql.DB) gin.HandlerFunc {
 	}
 }
 
+// MarkListDone marks a shopping list as done and moves it to history
+func MarkListDone(db *sql.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var req struct {
+			UserID int `json:"user_id"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get the list details
+		var listName string
+		var userID int
+		err := db.QueryRow(
+			"SELECT name, user_id FROM shopping_lists WHERE id = $1",
+			id,
+		).Scan(&listName, &userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve list"})
+			return
+		}
+
+		// Get all items for the list
+		rows, err := db.Query(
+			"SELECT id, name, quantity, unit, purchased FROM shopping_items WHERE list_id = $1 ORDER BY id",
+			id,
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve items"})
+			return
+		}
+		defer rows.Close()
+
+		var items []map[string]interface{}
+		for rows.Next() {
+			var itemID int
+			var name string
+			var quantity float64
+			var unit *string
+			var purchased bool
+			if err := rows.Scan(&itemID, &name, &quantity, &unit, &purchased); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan items"})
+				return
+			}
+			items = append(items, map[string]interface{}{
+				"id":        itemID,
+				"name":      name,
+				"quantity":  quantity,
+				"unit":      unit,
+				"purchased": purchased,
+			})
+		}
+
+		// Create data JSON
+		data := map[string]interface{}{
+			"name":  listName,
+			"items": items,
+		}
+		dataJSON, err := json.Marshal(data)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal data"})
+			return
+		}
+
+		// Insert into list_history
+		_, err = db.Exec(
+			"INSERT INTO list_history (user_id, original_list_id, action, data) VALUES ($1, $2, $3, $4)",
+			userID, id, "created", string(dataJSON),
+		)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save to history"})
+			return
+		}
+
+		// Delete the list (cascade will delete items)
+		_, err = db.Exec("DELETE FROM shopping_lists WHERE id = $1", id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete list"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "List marked as done and saved to history"})
+	}
+}
+
 // CreateItem creates a new item in a shopping list
 func CreateItem(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
